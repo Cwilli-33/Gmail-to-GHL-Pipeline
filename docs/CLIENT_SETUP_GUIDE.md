@@ -89,11 +89,13 @@ Wait 5–15 minutes, then check by going to [https://mxtoolbox.com](https://mxto
 | Field | Value |
 |-------|-------|
 | **Receiving Domain** | `inbound.yourdomain.com` (replace with your actual domain) |
-| **Destination URL** | `https://gmail-to-ghl-pipeline-production.up.railway.app/webhook/email` |
+| **Destination URL** | `YOUR_WEBHOOK_URL` (provided by your operator — see Step 4) |
 | **Spam Check** | Leave unchecked |
 | **Send Raw** | Leave unchecked |
 
 6. Click **Add**
+
+> **Where do I get the Destination URL?** Your operator will provide this. It looks like `https://your-app-name.up.railway.app/webhook/email`. If you haven't received it yet, ask your operator before completing this step.
 
 ---
 
