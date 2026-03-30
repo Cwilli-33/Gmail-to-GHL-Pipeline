@@ -21,7 +21,24 @@ Lead appears in your GoHighLevel CRM automatically
 
 ---
 
-## Step 1: Create a Free SendGrid Account
+## Step 1: Get Your Railway Webhook URL
+
+Your pipeline is deployed on Railway. You need its public URL for SendGrid configuration.
+
+1. Log into [railway.app](https://railway.app)
+2. Click on your pipeline service
+3. Go to **Settings** > **Networking** > **Public Networking**
+4. If you don't have a domain yet, click **Generate Domain**
+5. Your URL will look like: `https://your-app-name-production.up.railway.app`
+6. Your webhook URL is that domain + `/webhook/email`:
+   ```
+   https://your-app-name-production.up.railway.app/webhook/email
+   ```
+7. **Save this URL** — you'll need it in Step 4
+
+---
+
+## Step 2: Create a Free SendGrid Account
 
 1. Go to [https://signup.sendgrid.com](https://signup.sendgrid.com)
 2. Sign up for a **free account** (no credit card required)
@@ -30,7 +47,7 @@ Lead appears in your GoHighLevel CRM automatically
 
 ---
 
-## Step 2: Add a DNS Record to Your Domain
+## Step 3: Add a DNS Record to Your Domain
 
 You need to add **one MX record** to a subdomain of your domain. This tells email servers to route mail for that subdomain to SendGrid.
 
@@ -78,7 +95,7 @@ Wait 5–15 minutes, then check by going to [https://mxtoolbox.com](https://mxto
 
 ---
 
-## Step 3: Configure SendGrid Inbound Parse
+## Step 4: Configure SendGrid Inbound Parse
 
 1. Log in to [https://app.sendgrid.com](https://app.sendgrid.com)
 2. In the left sidebar, click **Settings**
@@ -89,17 +106,15 @@ Wait 5–15 minutes, then check by going to [https://mxtoolbox.com](https://mxto
 | Field | Value |
 |-------|-------|
 | **Receiving Domain** | `inbound.yourdomain.com` (replace with your actual domain) |
-| **Destination URL** | `YOUR_WEBHOOK_URL` (provided by your operator — see Step 4) |
+| **Destination URL** | Your webhook URL from Step 1 (e.g. `https://your-app-name-production.up.railway.app/webhook/email`) |
 | **Spam Check** | Leave unchecked |
 | **Send Raw** | Leave unchecked |
 
 6. Click **Add**
 
-> **Where do I get the Destination URL?** Your operator will provide this. It looks like `https://your-app-name.up.railway.app/webhook/email`. If you haven't received it yet, ask your operator before completing this step.
-
 ---
 
-## Step 4: Tell Us Your Sender Email
+## Step 5: Tell Us Your Sender Email
 
 The system only processes emails from approved senders (for security). Send us the email address(es) you'll be sending leads from, for example:
 
@@ -110,7 +125,7 @@ We'll whitelist them on our end.
 
 ---
 
-## Step 5: Test It
+## Step 6: Test It
 
 1. From your whitelisted email address, compose a new email
 2. **To:** `leads@inbound.yourdomain.com` (the part before @ can be anything)
