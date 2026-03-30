@@ -1,0 +1,307 @@
+"""Claude API integration for extracting structured lead data from PDF documents."""
+import asyncio
+import json
+import logging
+import re
+from typing import Any, Dict, Optional
+
+from anthropic import AsyncAnthropic
+from config.settings import settings
+
+logger = logging.getLogger(__name__)
+
+# Retry configuration
+MAX_RETRIES = 3
+RETRY_BASE_DELAY = 1.0  # seconds
+RETRY_MAX_DELAY = 30.0  # seconds
+RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 529}
+
+EXTRACTION_PROMPT = """You are an expert data extraction system for MCA (Merchant Cash Advance) lead processing.
+
+Analyze this PDF document and extract ALL available business and owner information.
+
+CRITICAL — IDENTIFYING THE CORRECT BUSINESS:
+This is an MCA lead document. The BUSINESS (the merchant/applicant seeking funding) is the company
+APPLYING for the cash advance — NOT the lender, funder, ISO, or broker. Look for clues:
+  - The business name is usually in a field labeled "Business Name", "Legal Name", "Company", "DBA",
+    "Applicant", or "Merchant".
+  - Lender/funder/ISO names often appear in headers, footers, logos, or fields labeled "Funder",
+    "Lender", "ISO", "Broker", or "Funded by". Do NOT use these as the business name.
+  - If the document is an application FORM, the business is whoever is FILLING OUT the form,
+    not the company whose form it is.
+
+This PDF is a funding application or credit scrub for an MCA lead. Extract ALL available fields.
+
+The document may be:
+- A CREDIT SCRUB — a funding platform summary page (e.g. from Aspire, LendingTree, etc.)
+  showing Business Info, Owner Info, credit scores (Experian/FICO), bank statement tables,
+  and Noted Transactions all on ONE page. This is the most common document type.
+- An MCA application form
+- A bank statement or financial summary
+- A credit report or score sheet
+- A business document, tax form, or articles of incorporation
+- A screenshot of CRM data or lead information
+- A business card
+
+Extract ALL of the following fields. Return ONLY valid JSON with no extra text.
+Use null for any field you cannot find or that is not visible in the document.
+
+{
+  "document_type": "CREDIT_SCRUB | MCA_APPLICATION | BANK_STATEMENT | CREDIT_REPORT | TAX_DOCUMENT | BUSINESS_DOCUMENT | CRM_SCREENSHOT | OTHER",
+  "confidence": 0.0 to 1.0,
+
+  "business_info": {
+    "legal_name": "The legal business name of the APPLICANT/MERCHANT (NOT the lender/funder)",
+    "dba": "DBA / trade name if different from legal name",
+    "ein": "Federal EIN, format XX-XXXXXXX. Include even if partially masked (e.g. ***-**-6789)",
+    "address": "Business street address",
+    "city": "Business city",
+    "state": "Business state (2-letter code)",
+    "zip_code": "Business ZIP code",
+    "phone": "Business phone number (raw, as shown)",
+    "email": "Business email",
+    "website": "Business website URL",
+    "industry": "Type of business / industry (e.g. Restaurant, Trucking, Construction)",
+    "entity_type": "LLC | CORP | SOLE_PROP | PARTNERSHIP | S_CORP | C_CORP | null",
+    "start_date": "Business start date or date of incorporation",
+    "state_of_incorporation": "State where the business was incorporated (2-letter code)"
+  },
+
+  "owner_info": {
+    "first_name": "Owner/principal first name",
+    "last_name": "Owner/principal last name",
+    "full_name": "Owner full name if first/last not clearly separated",
+    "phone": "Owner personal phone (may differ from business phone)",
+    "email": "Owner personal email",
+    "ssn_last_four": "Last 4 digits of SSN only (never extract full SSN)",
+    "dob": "Date of birth",
+    "ownership_percentage": "Ownership percentage as a number (e.g. 100, 51, 50)",
+    "title": "Title or role (Owner, CEO, President, Member, etc.)",
+    "home_address": "Owner home street address",
+    "home_city": "Owner home city",
+    "home_state": "Owner home state (2-letter code)",
+    "home_zip": "Owner home ZIP code"
+  },
+
+  "owner2_info": {
+    "full_name": "Second owner/partner/guarantor full name, or null if only one owner",
+    "phone": "Second owner phone",
+    "ownership_percentage": "Second owner percentage",
+    "fico": "Second owner FICO/credit score if shown"
+  },
+
+  "financial_info": {
+    "monthly_revenue": "Average monthly revenue/deposits as a number",
+    "annual_revenue": "Annual revenue as a number",
+    "use_of_funds": "Stated purpose for the funds",
+    "avg_daily_balance": "Average daily bank balance as a number",
+    "true_revenue_avg_3mo": "True 3-month average revenue/deposits if shown"
+  },
+
+  "credit_info": {
+    "fico_owner1": "Primary owner FICO / credit score as a number",
+    "fico_owner2": "Second owner FICO / credit score as a number (null if N/A)"
+  },
+
+  "mca_info": {
+    "has_existing_positions": "true/false — does the merchant have existing MCA positions?",
+    "current_funder": "Name of current MCA funder(s)",
+    "daily_payment": "Current daily MCA payment amount",
+    "remaining_balance": "Remaining balance on current MCA"
+  },
+
+  "statement_numbers": "IMPORTANT: Look for ANY masked account or statement identifiers anywhere on the document. These appear in columns labeled 'Statements', 'Account', or in tables with date periods. They look like XXXXXX5800, XXXXXXXXXXXX9112, XXXXXXXXXXXX1758 — a series of X characters followed by visible digits. Extract ALL unique ones you see as a comma-separated string, ORDERED BY DATE with the MOST RECENT first and OLDEST last. Use the date/period column next to each statement to determine the order. Include the X's exactly as shown. Return null ONLY if no such masked identifiers exist anywhere in the document.",
+
+  "additional_notes": "Any other relevant information from the document not captured above"
+}
+
+IMPORTANT RULES:
+- Extract EXACTLY what you see. Do not guess or fabricate data.
+- The BUSINESS NAME is the company seeking funding, NOT the lender/funder/ISO.
+- For phone numbers, include the raw number exactly as shown.
+- For EIN, include even partial/masked values (e.g. "***-**-6789" or just "6789").
+- For dollar amounts, extract as plain numbers without $ or commas (e.g. 50000 not $50,000).
+- For percentages, extract as plain numbers (e.g. 75 not 75%).
+- If the document is unreadable, set confidence below 0.3.
+- If no business data is visible at all, set confidence to 0.0.
+- Return ONLY the JSON object, nothing else."""
+
+
+class ClaudeExtractor:
+    def __init__(self):
+        self.client = AsyncAnthropic(api_key=settings.claude_api_key)
+        self.model = settings.claude_model
+        self.max_tokens = settings.claude_max_tokens
+        self.timeout = settings.claude_timeout
+
+    async def extract(self, pdf_base64: str) -> Dict[str, Any]:
+        """Extract structured data from a PDF using Claude API.
+
+        Args:
+            pdf_base64: Base64-encoded PDF data.
+
+        Returns:
+            Dict with extracted fields and confidence score.
+        """
+        try:
+            logger.info("Sending PDF to Claude for extraction")
+
+            response = await self._call_with_retry(pdf_base64)
+
+            raw_text = response.content[0].text
+            extracted = self._parse_response(raw_text)
+
+            confidence = extracted.get("confidence", 0.0)
+            document_type = extracted.get("document_type", "OTHER")
+
+            logger.info(
+                f"Extraction complete — type={document_type}, confidence={confidence:.2f}"
+            )
+
+            if confidence < settings.min_confidence_threshold:
+                logger.warning(
+                    f"Low confidence extraction ({confidence:.2f} < {settings.min_confidence_threshold})"
+                )
+
+            return extracted
+
+        except Exception as e:
+            logger.error(f"Claude extraction failed: {e}", exc_info=True)
+            return self._empty_extraction(error=str(e))
+
+    async def _call_with_retry(self, pdf_base64: str):
+        """Call Claude API with exponential backoff retry on transient errors."""
+        last_error = None
+
+        for attempt in range(MAX_RETRIES):
+            try:
+                response = await self.client.messages.create(
+                    model=self.model,
+                    max_tokens=self.max_tokens,
+                    timeout=float(self.timeout),
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "document",
+                                    "source": {
+                                        "type": "base64",
+                                        "media_type": "application/pdf",
+                                        "data": pdf_base64,
+                                    },
+                                },
+                                {
+                                    "type": "text",
+                                    "text": EXTRACTION_PROMPT,
+                                },
+                            ],
+                        }
+                    ],
+                )
+                return response
+
+            except Exception as e:
+                last_error = e
+                # Check if this is a retryable error
+                status_code = getattr(getattr(e, "response", None), "status_code", None)
+                is_retryable = (
+                    status_code in RETRYABLE_STATUS_CODES
+                    or "overloaded" in str(e).lower()
+                    or "timeout" in str(e).lower()
+                    or "connection" in str(e).lower()
+                )
+
+                if not is_retryable or attempt == MAX_RETRIES - 1:
+                    raise
+
+                delay = min(RETRY_BASE_DELAY * (2 ** attempt), RETRY_MAX_DELAY)
+                logger.warning(
+                    f"Claude API call failed (attempt {attempt + 1}/{MAX_RETRIES}), "
+                    f"retrying in {delay:.1f}s: {e}"
+                )
+                await asyncio.sleep(delay)
+
+        raise last_error  # Should never reach here, but just in case
+
+    def _parse_response(self, raw_text: str) -> Dict[str, Any]:
+        """Parse Claude's response text into structured JSON.
+
+        Handles common formatting issues like markdown code blocks,
+        trailing commas, etc.
+        """
+        text = raw_text.strip()
+
+        # Strip markdown code fences if present
+        if text.startswith("```"):
+            lines = text.split("\n")
+            # Remove first line (```json or ```) and last line (```)
+            lines = [l for l in lines if not l.strip().startswith("```")]
+            text = "\n".join(lines).strip()
+
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            pass
+
+        # Try fixing trailing commas
+        cleaned = re.sub(r",\s*([}\]])", r"\1", text)
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError:
+            pass
+
+        # Try extracting JSON object from surrounding text
+        brace_start = text.find("{")
+        brace_end = text.rfind("}")
+        if brace_start != -1 and brace_end != -1:
+            candidate = text[brace_start : brace_end + 1]
+            try:
+                return json.loads(candidate)
+            except json.JSONDecodeError:
+                pass
+
+        logger.error(f"Failed to parse Claude response as JSON: {raw_text[:200]}...")
+        return self._empty_extraction(error="JSON parse failure")
+
+    def _empty_extraction(self, error: Optional[str] = None) -> Dict[str, Any]:
+        """Return a valid but empty extraction result."""
+        result = {
+            "document_type": "OTHER",
+            "confidence": 0.0,
+            "business_info": {
+                "legal_name": None, "dba": None, "ein": None,
+                "address": None, "city": None, "state": None,
+                "zip_code": None, "phone": None, "email": None,
+                "website": None, "industry": None, "entity_type": None,
+                "start_date": None, "state_of_incorporation": None,
+            },
+            "owner_info": {
+                "first_name": None, "last_name": None, "full_name": None,
+                "phone": None, "email": None, "ssn_last_four": None,
+                "dob": None, "ownership_percentage": None, "title": None,
+                "home_address": None, "home_city": None,
+                "home_state": None, "home_zip": None,
+            },
+            "owner2_info": {
+                "full_name": None, "phone": None,
+                "ownership_percentage": None, "fico": None,
+            },
+            "financial_info": {
+                "monthly_revenue": None, "annual_revenue": None,
+                "use_of_funds": None,
+                "avg_daily_balance": None, "true_revenue_avg_3mo": None,
+            },
+            "credit_info": {
+                "fico_owner1": None, "fico_owner2": None,
+            },
+            "mca_info": {
+                "has_existing_positions": None, "current_funder": None,
+                "daily_payment": None, "remaining_balance": None,
+            },
+            "statement_numbers": None,
+            "additional_notes": None,
+        }
+        if error:
+            result["extraction_error"] = error
+        return result
