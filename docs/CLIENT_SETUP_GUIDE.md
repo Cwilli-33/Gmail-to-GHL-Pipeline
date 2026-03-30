@@ -1,6 +1,6 @@
 # Email Lead Pipeline — Client Setup Guide
 
-This guide walks you through setting up automated email-to-CRM lead processing. Once configured, you simply email PDF funding applications to a dedicated address and leads are automatically created in GoHighLevel.
+This guide walks you through setting up automated email-to-CRM lead processing. Once configured, you receive PDF funding applications at a dedicated email address and leads are automatically created in GoHighLevel.
 
 **Time required:** ~15 minutes
 **Technical skill:** Basic (DNS + SendGrid account)
@@ -10,7 +10,7 @@ This guide walks you through setting up automated email-to-CRM lead processing. 
 ## What You'll Set Up
 
 ```
-You email a PDF to:  leads@inbound.yourdomain.com
+Lead PDF emailed to:  leads@inbound.yourdomain.com
                           ↓
 SendGrid catches it and forwards to the processing server
                           ↓
@@ -114,20 +114,24 @@ Wait 5–15 minutes, then check by going to [https://mxtoolbox.com](https://mxto
 
 ---
 
-## Step 5: Tell Us Your Sender Email
+## Step 5: Whitelist Your Sender Email(s)
 
-The system only processes emails from approved senders (for security). Send us the email address(es) you'll be sending leads from, for example:
+The system only processes emails from approved senders (for security). You configure this in your Railway deployment.
 
-- `yourname@gmail.com`
-- `broker@yourcompany.com`
-
-We'll whitelist them on our end.
+1. Go to [railway.app](https://railway.app) and open your pipeline service
+2. Go to the **Variables** tab
+3. Find (or create) the `ALLOWED_SENDERS` variable
+4. Set it to the email address(es) you'll be receiving leads from, separated by commas:
+   ```
+   fund19@protonmail.com,broker@company.com
+   ```
+5. Railway will automatically restart with the new whitelist
 
 ---
 
 ## Step 6: Test It
 
-1. From your whitelisted email address, compose a new email
+1. From a whitelisted email address, compose a new email
 2. **To:** `leads@inbound.yourdomain.com` (the part before @ can be anything)
 3. **Attach** a PDF funding application
 4. **Send** the email
@@ -138,8 +142,8 @@ We'll whitelist them on our end.
 
 ## How to Use It Day-to-Day
 
-- **Send PDFs** to `leads@inbound.yourdomain.com` (or any address @inbound.yourdomain.com)
-- **One email = one lead.** Attach all documents for the same business in one email
+- **Receive lead PDFs** at `leads@inbound.yourdomain.com` (or any address @inbound.yourdomain.com)
+- **One email = one lead.** All documents for the same business should be in one email
 - **Funding applications** are extracted and turned into GHL contacts
 - **Bank statements** are uploaded as source documents to the contact
 - **Duplicates** are handled automatically — if the business already exists in GHL, the contact is updated (not duplicated)
@@ -151,7 +155,7 @@ We'll whitelist them on our end.
 
 ### "I sent an email but no lead appeared"
 
-1. **Check the sender:** Only whitelisted email addresses are processed. Make sure you're sending from an approved address.
+1. **Check the sender:** Only whitelisted email addresses are processed. Make sure the email came from an address listed in your `ALLOWED_SENDERS` variable in Railway.
 2. **Check the attachment:** Only PDF files are processed. Images, Word docs, and other formats are skipped.
 3. **Check DNS:** Go to [mxtoolbox.com](https://mxtoolbox.com) and look up `inbound.yourdomain.com`. If no MX record shows, your DNS isn't set up yet.
 4. **Wait a few minutes:** DNS changes can take up to 15 minutes. SendGrid processing takes 10–30 seconds.
@@ -174,11 +178,11 @@ A: Yes. `leads@inbound...`, `apps@inbound...`, `anything@inbound...` — they al
 **Q: Does this affect my regular email?**
 A: No. The MX record is only on the `inbound` subdomain. Your regular `@yourdomain.com` email is untouched.
 
-**Q: Is there a limit on how many emails I can send?**
+**Q: Is there a limit on how many emails I can receive?**
 A: SendGrid's free plan allows up to 100 inbound emails per day. Paid plans have higher limits.
 
 **Q: What types of PDFs work?**
 A: Funding applications, credit scrubs, MCA applications, and similar business documents. Bank statements are detected and uploaded as source documents.
 
-**Q: Can multiple people send to the same address?**
-A: Yes, as long as each sender's email is whitelisted.
+**Q: Can multiple people send leads to the same address?**
+A: Yes, as long as each sender's email is in your `ALLOWED_SENDERS` list in Railway.
