@@ -1,188 +1,167 @@
 # Email Lead Pipeline — Client Setup Guide
 
-This guide walks you through setting up automated email-to-CRM lead processing. Once configured, you receive PDF funding applications at a dedicated email address and leads are automatically created in GoHighLevel.
+This guide walks you through setting up automated email-to-CRM lead processing. Once configured, lead emails received at your inbox are automatically extracted and appear as contacts in GoHighLevel.
 
 **Time required:** ~15 minutes
-**Technical skill:** Basic (DNS + SendGrid account)
+**Technical skill:** Basic (just provide email credentials)
 
 ---
 
 ## What You'll Set Up
 
 ```
-Lead PDF emailed to:  leads@inbound.yourdomain.com
-                          ↓
-SendGrid catches it and forwards to the processing server
-                          ↓
-AI extracts lead data from the PDF
-                          ↓
+Lead email arrives at your inbox (e.g. uwteam@onixcap.net)
+    ↓  (detected instantly)
+AI extracts lead data from PDF attachments
+    ↓
 Lead appears in your GoHighLevel CRM automatically
+    ↓
+Email moved to "Processed" folder
 ```
 
 ---
 
-## Step 1: Get Your Railway Webhook URL
+## Step 1: Get Your Email IMAP Settings
 
-Your pipeline is deployed on Railway. You need its public URL for SendGrid configuration.
+The pipeline connects directly to your email inbox to monitor for new leads. You need your IMAP login settings — these are the same settings you'd use to add your email to Outlook or Apple Mail.
 
-1. Log into [railway.app](https://railway.app)
-2. Click on your pipeline service
-3. Go to **Settings** > **Networking** > **Public Networking**
-4. If you don't have a domain yet, click **Generate Domain**
-5. Your URL will look like: `https://your-app-name-production.up.railway.app`
-6. Your webhook URL is that domain + `/webhook/email`:
-   ```
-   https://your-app-name-production.up.railway.app/webhook/email
-   ```
-7. **Save this URL** — you'll need it in Step 4
+**What you need:**
 
----
+| Setting | Example | Where to Find |
+|---------|---------|---------------|
+| IMAP Server | `mail.onixcap.net` | Your email provider's help docs or settings page |
+| IMAP Port | `993` | Almost always 993 (SSL) |
+| Email Address | `uwteam@onixcap.net` | Your email address |
+| Password | Your email password | If 2FA is enabled, create an "app password" |
 
-## Step 2: Create a Free SendGrid Account
+**Common IMAP servers by provider:**
+- **Gmail:** `imap.gmail.com` (requires app password if 2FA enabled)
+- **Outlook/Microsoft 365:** `outlook.office365.com`
+- **GoDaddy:** `imap.secureserver.net`
+- **cPanel/Webmail:** Usually `mail.yourdomain.com`
 
-1. Go to [https://signup.sendgrid.com](https://signup.sendgrid.com)
-2. Sign up for a **free account** (no credit card required)
-3. Complete email verification
-4. You do NOT need to set up any sending — we only use the receiving feature
+> **Tip:** Search "[your email provider] IMAP settings" if you're not sure.
 
 ---
 
-## Step 3: Add a DNS Record to Your Domain
+## Step 2: Get Your GHL API Key and Location ID
 
-You need to add **one MX record** to a subdomain of your domain. This tells email servers to route mail for that subdomain to SendGrid.
+### Create a Private Integration
 
-**Important:** Use a subdomain (like `inbound`) — do NOT add this to your main domain or it will break your regular email.
+1. Log into your GHL account
+2. Go to **Settings** > **Integrations** > **Private Integrations**
+3. Click **Create Private Integration**
+4. Name it "Email Lead Pipeline"
+5. Under **Scopes**, enable:
+   - `contacts.readonly`
+   - `contacts.write`
+   - `locations.readonly`
+   - `forms.write` (needed for file uploads)
+6. Click **Save** and copy the **API Key** (starts with `pit-`)
 
-### The record to add:
+### Find Your Location ID
 
-| Type | Host / Name | Value | Priority |
-|------|-------------|-------|----------|
-| MX   | `inbound`   | `mx.sendgrid.net` | 10 |
-
-### Where to add it:
-
-Go to wherever you manage your domain's DNS. Common providers:
-
-- **GoDaddy:** Domains → DNS → Add Record
-- **Cloudflare:** DNS → Records → Add Record
-- **Namecheap:** Domain List → Manage → Advanced DNS → Add Record
-- **Google Domains:** DNS → Custom Records → Manage
-
-### Examples by provider:
-
-**GoDaddy:**
-- Type: MX
-- Host: `inbound`
-- Points to: `mx.sendgrid.net`
-- Priority: 10
-- TTL: 1 Hour
-
-**Cloudflare:**
-- Type: MX
-- Name: `inbound`
-- Mail server: `mx.sendgrid.net`
-- Priority: 10
-
-**Namecheap:**
-- Type: MX Record
-- Host: `inbound`
-- Value: `mx.sendgrid.net`
-- Priority: 10
-
-### Verify it worked:
-
-Wait 5–15 minutes, then check by going to [https://mxtoolbox.com](https://mxtoolbox.com) and entering `inbound.yourdomain.com`. You should see `mx.sendgrid.net` listed.
+Look at your GHL URL:
+```
+https://app.gohighlevel.com/v2/location/YOUR_LOCATION_ID/settings
+```
 
 ---
 
-## Step 4: Configure SendGrid Inbound Parse
+## Step 3: Create GHL Custom Fields
 
-1. Log in to [https://app.sendgrid.com](https://app.sendgrid.com)
-2. In the left sidebar, click **Settings**
-3. Click **Inbound Parse**
-4. Click **"Add Host & URL"**
-5. Fill in:
-
-| Field | Value |
-|-------|-------|
-| **Receiving Domain** | `inbound.yourdomain.com` (replace with your actual domain) |
-| **Destination URL** | Your webhook URL from Step 1 (e.g. `https://your-app-name-production.up.railway.app/webhook/email`) |
-| **Spam Check** | Leave unchecked |
-| **Send Raw** | Leave unchecked |
-
-6. Click **Add**
+Create the custom fields listed in the [GHL Custom Fields Guide](GHL_CUSTOM_FIELDS.md). Your operator will then run a script to pull the field IDs.
 
 ---
 
-## Step 5: Whitelist Your Sender Email(s)
+## Step 4: Deploy to Railway
 
-The system only processes emails from approved senders (for security). You configure this in your Railway deployment.
+1. Go to [railway.app](https://railway.app) and sign up
+2. Click **New Project** > **Deploy from GitHub repo**
+3. Select the pipeline repository
+4. Go to the **Variables** tab and add:
 
-1. Go to [railway.app](https://railway.app) and open your pipeline service
-2. Go to the **Variables** tab
-3. Find (or create) the `ALLOWED_SENDERS` variable
-4. Set it to the email address(es) you'll be receiving leads from, separated by commas:
+| Variable | Value |
+|----------|-------|
+| `CLAUDE_API_KEY` | Your Anthropic API key |
+| `GHL_API_KEY` | Your GHL Private Integration key |
+| `GHL_LOCATION_ID` | Your GHL Location ID |
+| `IMAP_HOST` | Your IMAP server (e.g. `mail.onixcap.net`) |
+| `IMAP_PORT` | `993` |
+| `IMAP_EMAIL` | Your email address (e.g. `uwteam@onixcap.net`) |
+| `IMAP_PASSWORD` | Your email password |
+| `SOURCE_DOCUMENTS_FIELD_ID` | GHL field ID (from your operator) |
+| `SMTP_HOST` | Your SMTP server (usually same as IMAP host) |
+| `SMTP_PORT` | `587` |
+
+5. Railway will deploy automatically
+
+---
+
+## Step 5: Verify It's Running
+
+1. Go to **Settings** > **Networking** > **Generate Domain** to get your public URL
+2. Visit `https://your-app.up.railway.app/health`
+3. You should see:
+   ```json
+   {"status": "healthy", "imap_monitoring": true}
    ```
-   fund19@protonmail.com,broker@company.com
-   ```
-5. Railway will automatically restart with the new whitelist
 
 ---
 
 ## Step 6: Test It
 
-1. From a whitelisted email address, compose a new email
-2. **To:** `leads@inbound.yourdomain.com` (the part before @ can be anything)
-3. **Attach** a PDF funding application
-4. **Send** the email
-5. Wait 30–60 seconds
-6. Check GoHighLevel — the lead should appear as a new contact
+1. Send (or have someone send) a test email with a PDF funding application to your monitored inbox
+2. Wait 30-60 seconds
+3. Check GoHighLevel — the lead should appear as a new contact
+4. Check your email — the processed email should be in the "Processed" folder
 
 ---
 
-## How to Use It Day-to-Day
+## How It Works Day-to-Day
 
-- **Receive lead PDFs** at `leads@inbound.yourdomain.com` (or any address @inbound.yourdomain.com)
-- **One email = one lead.** All documents for the same business should be in one email
-- **Funding applications** are extracted and turned into GHL contacts
-- **Bank statements** are uploaded as source documents to the contact
-- **Duplicates** are handled automatically — if the business already exists in GHL, the contact is updated (not duplicated)
-- **Email body is ignored** — only PDF attachments are processed
+- **Every email** in your monitored inbox is treated as a lead
+- **Funding application PDFs** are extracted and turned into GHL contacts
+- **Bank statement PDFs** are uploaded as source documents to the contact
+- **Email body text** is saved as a note on the GHL contact
+- **Subject line** is used as a fallback business name if the PDF extraction misses it
+- **Processed emails** are moved to a "Processed" folder in your inbox
+- **Failed emails** are moved to a "Failed" folder — check these for issues
+- **Duplicates** are handled automatically — same lead = update, not duplicate
 
 ---
 
 ## Troubleshooting
 
-### "I sent an email but no lead appeared"
+### "No leads are appearing"
+1. Check that the app is running: visit `/health` — `imap_monitoring` should be `true`
+2. Check Railway logs for IMAP connection errors
+3. Verify your IMAP credentials are correct (try logging in with an email client)
 
-1. **Check the sender:** Only whitelisted email addresses are processed. Make sure the email came from an address listed in your `ALLOWED_SENDERS` variable in Railway.
-2. **Check the attachment:** Only PDF files are processed. Images, Word docs, and other formats are skipped.
-3. **Check DNS:** Go to [mxtoolbox.com](https://mxtoolbox.com) and look up `inbound.yourdomain.com`. If no MX record shows, your DNS isn't set up yet.
-4. **Wait a few minutes:** DNS changes can take up to 15 minutes. SendGrid processing takes 10–30 seconds.
+### "Email stays in inbox (not moved to Processed)"
+The pipeline might be crashing before it can move the email. Check Railway logs and `/admin/debug`.
 
-### "The lead was created but some fields are missing"
+### "Lead was created but some fields are missing"
+The AI extracts what it can see in the PDF. Low-quality scans or incomplete applications will have gaps.
 
-The system extracts what it can see in the PDF. If the PDF is low quality, scanned poorly, or missing fields, those will be blank in GHL. The more complete the funding application, the better the extraction.
-
-### "I got a duplicate contact"
-
-The system tries hard to match existing contacts by EIN, phone, email, and business name. If the PDF has very little data, it may not find the match. You can merge duplicates manually in GHL.
+### "I got a failure notification email"
+Check the "Failed" folder in your inbox. The notification includes the reason. Common causes:
+- No PDF attachment in the email
+- PDF is not a funding application (only bank statements)
+- GHL API error (check your API key)
 
 ---
 
 ## FAQ
 
-**Q: Can I use any email address before the @?**
-A: Yes. `leads@inbound...`, `apps@inbound...`, `anything@inbound...` — they all work.
-
 **Q: Does this affect my regular email?**
-A: No. The MX record is only on the `inbound` subdomain. Your regular `@yourdomain.com` email is untouched.
+A: No. The pipeline only reads and moves emails — it doesn't delete them or change anything else.
 
-**Q: Is there a limit on how many emails I can receive?**
-A: SendGrid's free plan allows up to 100 inbound emails per day. Paid plans have higher limits.
+**Q: What happens to processed emails?**
+A: They're moved to a "Processed" folder in your inbox. You can review them anytime.
 
-**Q: What types of PDFs work?**
-A: Funding applications, credit scrubs, MCA applications, and similar business documents. Bank statements are detected and uploaded as source documents.
+**Q: What if the same lead email comes in twice?**
+A: It's detected as a duplicate and skipped automatically.
 
-**Q: Can multiple people send leads to the same address?**
-A: Yes, as long as each sender's email is in your `ALLOWED_SENDERS` list in Railway.
+**Q: Do I need to keep the app running 24/7?**
+A: Yes — Railway handles this. The app reconnects automatically if the connection drops.

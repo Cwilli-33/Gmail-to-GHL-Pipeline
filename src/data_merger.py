@@ -38,6 +38,14 @@ GHL_CUSTOM_FIELDS = {
     "fico_owner1":              "8xhJtYRSWIy1fxBmrO0n",
     "fico_owner2":              "SSSP2fzyfGVUMsghsaL0",
 
+    # SSN
+    "ssn_owner1":               "NEEDS_FIELD_ID",
+    "ssn_owner2":               "NEEDS_FIELD_ID",
+
+    # DOB
+    "dob_owner1":               "NEEDS_FIELD_ID",
+    "dob_owner2":               "NEEDS_FIELD_ID",
+
     # Statement numbers
     "statement_number":         "AXQyV1j0A8ByYGLvVFon",
 
@@ -50,6 +58,22 @@ GHL_CUSTOM_FIELDS = {
     # Metadata
     "batch_date":               "f7D788L5PQXxQHBZ1uRj",
 }
+
+
+def _is_valid_email(email: str) -> bool:
+    """Basic email validation — must have exactly one @ with text on both sides and a dot in domain."""
+    if not email or not isinstance(email, str):
+        return False
+    email = email.strip()
+    if " " in email:
+        return False
+    parts = email.split("@")
+    if len(parts) != 2:
+        return False
+    local, domain = parts
+    if not local or not domain or "." not in domain:
+        return False
+    return True
 
 
 class DataMerger:
@@ -70,17 +94,7 @@ class DataMerger:
         match_confidence: int,
     ) -> Dict[str, Any]:
         """Produce a GHL-compatible update payload by merging extracted data into
-        an existing contact.
-
-        Args:
-            existing_contact: Current contact dict from GHL.
-            extracted: Extraction result from ClaudeExtractor.
-            match_method: How the match was made (EIN, PHONE, EMAIL, NAME, etc.).
-            match_confidence: 0-100 confidence in the match.
-
-        Returns:
-            Dict payload suitable for GHLClient.update_contact().
-        """
+        an existing contact."""
         biz = extracted.get("business_info", {}) or {}
         owner = extracted.get("owner_info", {}) or {}
         owner2 = extracted.get("owner2_info", {}) or {}
@@ -90,17 +104,14 @@ class DataMerger:
 
         update: Dict[str, Any] = {}
 
-        # --- Standard fields ---
         update.update(self._merge_standard_fields(existing_contact, biz, owner))
 
-        # --- Tags ---
         update["tags"] = self._merge_tags(
             existing_contact.get("tags", []),
             extracted,
             match_method,
         )
 
-        # --- Custom fields (using GHL field IDs) ---
         custom = self._build_custom_fields(
             existing_contact, biz, owner, owner2, fin, credit, mca, extracted
         )
@@ -115,10 +126,7 @@ class DataMerger:
         return update
 
     def build_new_contact(self, extracted: Dict[str, Any]) -> Dict[str, Any]:
-        """Build a GHL contact payload from scratch using only extracted data.
-
-        Used when no existing contact was matched.
-        """
+        """Build a GHL contact payload from scratch using only extracted data."""
         biz = extracted.get("business_info", {}) or {}
         owner = extracted.get("owner_info", {}) or {}
         owner2 = extracted.get("owner2_info", {}) or {}
@@ -146,7 +154,7 @@ class DataMerger:
         email = owner.get("email") or biz.get("email")
         if phone:
             contact["phone"] = self._clean_phone(phone)
-        if email:
+        if email and _is_valid_email(email):
             contact["email"] = email.strip().lower()
 
         # Business details
@@ -192,7 +200,6 @@ class DataMerger:
         """Merge top-level GHL standard fields, never overwriting with empty values."""
         update: Dict[str, Any] = {}
 
-        # Owner name
         first = owner.get("first_name")
         last = owner.get("last_name")
         if not first and not last and owner.get("full_name"):
@@ -203,18 +210,18 @@ class DataMerger:
         self._set_if_better(update, existing, "firstName", first)
         self._set_if_better(update, existing, "lastName", last)
 
-        # Contact info
         phone = owner.get("phone") or biz.get("phone")
         email = owner.get("email") or biz.get("email")
         if phone:
             phone = self._clean_phone(phone)
-        if email:
+        if email and _is_valid_email(email):
             email = email.strip().lower()
+        else:
+            email = None
 
         self._set_if_better(update, existing, "phone", phone)
         self._set_if_better(update, existing, "email", email)
 
-        # Business
         company = biz.get("legal_name") or biz.get("dba")
         self._set_if_better(update, existing, "companyName", company)
         self._set_if_better(update, existing, "website", biz.get("website"))
@@ -241,7 +248,16 @@ class DataMerger:
         existing_custom = self._existing_custom_map(existing)
 
         # --- Business identifiers ---
-        self._set_custom(custom, "ein", biz.get("ein"))
+        # EIN: prefer full unmasked values over masked ones
+        new_ein = biz.get("ein")
+        if new_ein:
+            existing_ein = existing_custom.get(GHL_CUSTOM_FIELDS.get("ein", ""), "")
+            new_is_masked = bool(re.search(r"[xX*]{2,}", str(new_ein)))
+            existing_is_masked = bool(re.search(r"[xX*]{2,}", str(existing_ein))) if existing_ein else True
+            # Only set if: new is unmasked, OR existing is empty/masked
+            if not new_is_masked or not existing_ein or existing_is_masked:
+                self._set_custom(custom, "ein", new_ein)
+
         self._set_custom(custom, "dba", biz.get("dba"))
         self._set_custom(custom, "business_start_date", biz.get("start_date"))
         self._set_custom(custom, "state_of_incorporation", biz.get("state_of_incorporation"))
@@ -267,6 +283,14 @@ class DataMerger:
             custom, existing_custom, "fico_owner2",
             credit.get("fico_owner2") or owner2.get("fico")
         )
+
+        # --- SSN ---
+        self._set_custom(custom, "ssn_owner1", owner.get("ssn"))
+        self._set_custom(custom, "ssn_owner2", owner2.get("ssn"))
+
+        # --- DOB ---
+        self._set_custom(custom, "dob_owner1", owner.get("dob"))
+        self._set_custom(custom, "dob_owner2", owner2.get("dob"))
 
         # Statement numbers — accumulate across documents, don't overwrite
         new_stmts = extracted.get("statement_numbers")
@@ -302,7 +326,6 @@ class DataMerger:
         elif isinstance(existing_tags, str):
             tags = [t.strip() for t in existing_tags.split(",") if t.strip()]
 
-        # Add pipeline tags
         new_tags = ["email-lead"]
 
         doc_type = extracted.get("document_type", "")
@@ -314,7 +337,6 @@ class DataMerger:
 
         mca = extracted.get("mca_info", {}) or {}
         has_positions = mca.get("has_existing_positions")
-        # Guard against string "false" being truthy
         if isinstance(has_positions, str):
             has_positions = has_positions.lower() not in ("false", "no", "none", "0", "")
         if has_positions:
@@ -333,7 +355,6 @@ class DataMerger:
             elif fico < 550:
                 new_tags.append("fico-sub550")
 
-        # Deduplicate (case-insensitive) while preserving order
         seen = {t.lower() for t in tags}
         for t in new_tags:
             if t.lower() not in seen:
@@ -351,13 +372,12 @@ class DataMerger:
         if not value:
             return
         ghl_id = GHL_CUSTOM_FIELDS.get(field_name)
-        if ghl_id:
+        if ghl_id and not ghl_id.startswith("NEEDS_"):
             custom[ghl_id] = str(value)
 
     def _set_custom_numeric(
         self, custom: Dict, existing_custom: Dict, field_name: str, value: Any
     ) -> None:
-        """Set a numeric custom field, always preferring a new non-null value."""
         new_val = self._to_float(value)
         if new_val is None:
             return
@@ -368,7 +388,6 @@ class DataMerger:
     def _set_custom_numeric_prefer_higher(
         self, custom: Dict, existing_custom: Dict, field_name: str, value: Any
     ) -> None:
-        """Set a numeric custom field, preferring the higher of existing vs new."""
         new_val = self._to_float(value)
         if new_val is None:
             return
@@ -377,30 +396,19 @@ class DataMerger:
             return
         existing_val = self._to_float(existing_custom.get(ghl_id))
         if existing_val and existing_val > new_val:
-            return  # Keep existing higher value
+            return
         custom[ghl_id] = str(new_val)
 
     @staticmethod
     def _format_custom_fields(custom: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Convert {ghl_id: value} dict to GHL v2 API array format."""
         return [
             {"id": k, "field_value": v}
             for k, v in custom.items()
             if v is not None
         ]
 
-    # -------------------------------------------------------------------------
-    # Utility methods
-    # -------------------------------------------------------------------------
-
     @staticmethod
-    def _set_if_better(
-        update: Dict[str, Any],
-        existing: Dict[str, Any],
-        key: str,
-        new_value: Optional[str],
-    ):
-        """Set key in update dict only if new_value is non-empty and existing is empty."""
+    def _set_if_better(update, existing, key, new_value):
         if not new_value:
             return
         existing_val = existing.get(key)
@@ -409,7 +417,6 @@ class DataMerger:
 
     @staticmethod
     def _existing_custom_map(contact: Dict[str, Any]) -> Dict[str, str]:
-        """Convert GHL custom field array to a simple {id: value} dict for lookups."""
         result: Dict[str, str] = {}
         custom_fields = contact.get("customFields", contact.get("customField", []))
         if isinstance(custom_fields, list):
@@ -434,10 +441,8 @@ class DataMerger:
 
     @staticmethod
     def _merge_statement_numbers(existing: str, new: str) -> str:
-        """Merge existing and new statement numbers, deduplicating."""
         seen = set()
         result = []
-
         for raw in [new, existing]:
             if not raw:
                 continue
@@ -446,12 +451,10 @@ class DataMerger:
                 if item and item not in seen:
                     seen.add(item)
                     result.append(item)
-
         return ", ".join(result)
 
     @staticmethod
     def _clean_phone(raw: str) -> str:
-        """Quick phone cleanup — strip to digits and prepend +1 if needed."""
         digits = re.sub(r"\D", "", raw)
         if len(digits) == 10:
             return f"+1{digits}"

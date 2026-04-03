@@ -6,86 +6,89 @@ All configuration is done through environment variables. Set these in Railway (o
 
 ## Required Variables
 
-These must be set or the application will not work.
-
 | Variable | Description | Example | Where to Get It |
 |----------|-------------|---------|----------------|
-| `CLAUDE_API_KEY` | Anthropic API key for Claude | `sk-ant-api03-xxxxx...` | [console.anthropic.com](https://console.anthropic.com) |
-| `GHL_API_KEY` | GoHighLevel Private Integration key | `pit-xxxxxxxx-xxxx-...` | GHL Settings > Integrations > Private Integrations |
-| `GHL_LOCATION_ID` | Your GHL location identifier | `aBcDeFgHiJkLmNoPqRsT` | GHL Settings > Business Profile (or from the URL) |
-| `ALLOWED_SENDERS` | Comma-separated list of approved sender emails | `fund19@protonmail.com,broker@gmail.com` | You define these |
-| `SOURCE_DOCUMENTS_FIELD_ID` | GHL custom field ID for Source Documents (FILE_UPLOAD type) | `CCfYyWrJaoNU1Ma0K0ID` | Run `python scripts/get_field_ids.py` |
+| `CLAUDE_API_KEY` | Anthropic API key | `sk-ant-api03-xxxxx...` | [console.anthropic.com](https://console.anthropic.com) |
+| `GHL_API_KEY` | GoHighLevel Private Integration key | `pit-xxxxxxxx-xxxx-...` | GHL Settings > Integrations |
+| `GHL_LOCATION_ID` | Your GHL location identifier | `aBcDeFgHiJkLmNoPqRsT` | From GHL URL |
+| `IMAP_HOST` | IMAP server hostname | `mail.onixcap.net` | Email provider settings |
+| `IMAP_EMAIL` | Email address to monitor | `uwteam@onixcap.net` | Your lead intake email |
+| `IMAP_PASSWORD` | Email password or app password | `yourpassword` | Email provider |
+| `SOURCE_DOCUMENTS_FIELD_ID` | GHL custom field ID (FILE_UPLOAD type) | `CCfYyWrJaoNU1Ma0K0ID` | Run `get_field_ids.py` |
 
 ---
 
 ## Optional Variables
 
-These have sensible defaults. Only change them if you need to.
+### IMAP Settings
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `IMAP_PORT` | `993` | IMAP server port. 993 for SSL (standard). |
+
+### SMTP Settings (Failure Notifications)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SMTP_HOST` | Not set | SMTP server hostname. Usually same as IMAP host. If not set, failure notifications are disabled. |
+| `SMTP_PORT` | `587` | SMTP server port. 587 for STARTTLS (standard). |
+| `NOTIFICATION_EMAIL` | Same as `IMAP_EMAIL` | Email address to receive failure notifications. |
 
 ### Security
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ADMIN_API_KEY` | Auto-generated each boot | API key for admin endpoints (`/admin/debug`, `/admin/cleanup-fingerprints`). Set this to a fixed value so it persists across restarts. |
-| `SENDGRID_WEBHOOK_VERIFICATION_KEY` | Not set | SendGrid webhook verification key. Optional but recommended for production to verify webhook authenticity. |
+| `ADMIN_API_KEY` | Auto-generated each boot | API key for `/admin/debug` and `/admin/cleanup-fingerprints`. Set a fixed value to persist across restarts. |
 
 ### Claude AI Settings
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CLAUDE_MODEL` | `claude-sonnet-4-20250514` | Which Claude model to use. Sonnet is recommended for cost/quality balance. |
-| `CLAUDE_MAX_TOKENS` | `4000` | Maximum response length from Claude. 4000 is sufficient for all extractions. |
-| `CLAUDE_TIMEOUT` | `60` | Seconds to wait for Claude to respond before timing out. |
+| `CLAUDE_MODEL` | `claude-sonnet-4-20250514` | Which Claude model to use. |
+| `CLAUDE_MAX_TOKENS` | `4000` | Maximum response length. |
+| `CLAUDE_TIMEOUT` | `60` | Seconds to wait for Claude. |
 
 ### Processing Settings
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MIN_CONFIDENCE_THRESHOLD` | `0.25` | Minimum AI confidence score (0.0-1.0) to accept an extraction. PDFs below this threshold are skipped. Lower = accept more (potentially noisy) results. Higher = stricter quality. |
-| `IMAGE_FINGERPRINT_TTL_HOURS` | `24` | How many hours to remember processed emails for deduplication. After this time, the same email can be processed again. |
-| `EXTRACTION_CACHE_TTL_DAYS` | `7` | How many days to keep extraction records in the local database. |
+| `MIN_CONFIDENCE_THRESHOLD` | `0.25` | Minimum AI confidence (0.0-1.0) to accept an extraction. |
+| `IMAGE_FINGERPRINT_TTL_HOURS` | `24` | Hours to remember processed emails for deduplication. |
 
 ### Application Settings
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LOG_LEVEL` | `INFO` | Logging verbosity. Options: `DEBUG`, `INFO`, `WARNING`, `ERROR`. Use `DEBUG` when troubleshooting, `INFO` for normal operation. |
-| `ENV` | `development` | Environment label. Set to `production` in Railway. |
-| `DEBUG` | `false` | Enable debug mode. Shows SQL queries and verbose logging. |
+| `LOG_LEVEL` | `INFO` | Logging verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR`. |
+| `ENV` | `development` | Environment label. |
+| `DEBUG` | `false` | Enable debug mode. |
 
 ### Database
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DATABASE_URL` | `sqlite:///./email_ghl.db` | Database connection string. SQLite works out of the box. For production with persistent storage, use PostgreSQL: `postgresql://user:pass@host:5432/dbname` |
+| `DATABASE_URL` | `sqlite:///./email_ghl.db` | Database connection string. Use PostgreSQL for production. |
 
 ### Optional Services
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `REDIS_URL` | Not set | Redis connection URL for caching. Not required — the pipeline works fine without Redis. |
-| `SENTRY_DSN` | Not set | Sentry error tracking DSN. Optional monitoring integration. |
+| `REDIS_URL` | Not set | Redis URL for caching. Not required. |
+| `SENTRY_DSN` | Not set | Sentry error tracking. |
 
 ---
 
 ## Setting Variables in Railway
 
-1. Go to your Railway project
-2. Click on your service
-3. Go to the **Variables** tab
-4. Click **+ New Variable** for each one
-5. Railway automatically restarts the app when you save
-
----
+1. Go to your Railway project > service > **Variables** tab
+2. Click **+ New Variable** for each
+3. Railway auto-restarts on save
 
 ## Setting Variables Locally
 
-For local development, copy `.env.example` to `.env` and fill in your values:
-
 ```bash
 cp .env.example .env
+# Edit .env with your values
 ```
 
-Then edit `.env` with your favorite text editor. The application reads this file automatically on startup.
-
-> **Never commit the `.env` file to git.** It's already in `.gitignore` to prevent this.
+> **Never commit `.env` to git.** It's in `.gitignore`.

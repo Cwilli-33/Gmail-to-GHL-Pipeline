@@ -18,18 +18,28 @@ class Settings(BaseSettings):
     ghl_api_key: str = Field(default="", description="GoHighLevel API key")
     ghl_location_id: str = Field(default="", description="GoHighLevel location ID")
 
-    # Email / SendGrid Settings
-    allowed_senders: str = Field(
+    # IMAP Settings (email monitoring)
+    imap_host: str = Field(default="", description="IMAP server hostname (e.g. mail.onixcap.net)")
+    imap_port: int = Field(default=993, description="IMAP server port (993 for SSL)")
+    imap_email: str = Field(default="", description="Email address to monitor (e.g. uwteam@onixcap.net)")
+    imap_password: str = Field(default="", description="Email password or app password")
+
+    # SMTP Settings (failure notifications)
+    smtp_host: str = Field(default="", description="SMTP server hostname (often same as IMAP host)")
+    smtp_port: int = Field(default=587, description="SMTP server port (587 for STARTTLS, 465 for SSL)")
+    notification_email: str = Field(
         default="",
-        description="Comma-separated list of allowed sender email addresses"
+        description="Email to send failure notifications to (defaults to imap_email if empty)"
     )
-    sendgrid_webhook_verification_key: Optional[str] = Field(
-        default=None,
-        description="SendGrid webhook verification key (optional, for signed webhook verification)"
-    )
+
+    # GHL Settings
     source_documents_field_id: str = Field(
         default="",
         description="GHL custom field ID for the Source Documents FILE_UPLOAD field"
+    )
+    ghl_api_base_url: str = Field(
+        default="https://rest.gohighlevel.com/v1",
+        description="GHL API base URL"
     )
 
     # Database
@@ -49,12 +59,6 @@ class Settings(BaseSettings):
     claude_max_tokens: int = Field(default=4000, description="Max tokens for Claude")
     claude_timeout: int = Field(default=60, description="Claude API timeout in seconds")
 
-    # GHL Settings
-    ghl_api_base_url: str = Field(
-        default="https://rest.gohighlevel.com/v1",
-        description="GHL API base URL"
-    )
-
     # Processing Settings
     min_confidence_threshold: float = Field(
         default=0.25,
@@ -69,7 +73,7 @@ class Settings(BaseSettings):
         description="Days to keep extraction records"
     )
 
-    # Webhook Settings
+    # Security
     webhook_secret: Optional[str] = Field(
         default=None,
         description="Webhook secret for validation"
@@ -77,6 +81,11 @@ class Settings(BaseSettings):
 
     # Monitoring
     sentry_dsn: Optional[str] = Field(default=None, description="Sentry DSN for error tracking")
+
+    @property
+    def effective_notification_email(self) -> str:
+        """Return notification email, falling back to imap_email."""
+        return self.notification_email or self.imap_email
 
     class Config:
         env_file = ".env"

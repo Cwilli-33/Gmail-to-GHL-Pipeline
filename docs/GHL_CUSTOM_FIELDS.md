@@ -1,6 +1,6 @@
 # GHL Custom Fields Reference
 
-This document covers the 20 custom fields needed in your GHL location for the pipeline to store extracted lead data.
+This document covers the 24 custom fields needed in your GHL location for the pipeline to store extracted lead data.
 
 ---
 
@@ -61,32 +61,46 @@ Create all of the following custom fields in your GHL location under **Settings 
 | 12 | FICO Owner 1 | Single Line | Primary owner credit score |
 | 13 | FICO Owner 2 | Single Line | Second owner credit score |
 
+### SSN (Social Security Numbers)
+
+| # | Field Name | Field Type | What It Stores |
+|---|-----------|-----------|----------------|
+| 14 | SSN Owner 1 | Single Line | Primary owner SSN (full or masked) |
+| 15 | SSN Owner 2 | Single Line | Second owner SSN (full or masked) |
+
+### Date of Birth
+
+| # | Field Name | Field Type | What It Stores |
+|---|-----------|-----------|----------------|
+| 16 | DOB Owner 1 | Single Line | Primary owner date of birth |
+| 17 | DOB Owner 2 | Single Line | Second owner date of birth |
+
 ### Statement Numbers
 
 | # | Field Name | Field Type | What It Stores |
 |---|-----------|-----------|----------------|
-| 14 | Statement Number | Single Line | Masked account/statement identifiers |
+| 18 | Statement Number | Single Line | Masked account/statement identifiers |
 
 ### Owner 1 Home Address
 
 | # | Field Name | Field Type | What It Stores |
 |---|-----------|-----------|----------------|
-| 15 | Owner 1 Address | Single Line | Owner home street address |
-| 16 | Owner 1 City | Single Line | Owner home city |
-| 17 | Owner 1 State | Single Line | Owner home state (2-letter code) |
-| 18 | Owner 1 Zip | Single Line | Owner home ZIP code |
+| 19 | Owner 1 Address | Single Line | Owner home street address |
+| 20 | Owner 1 City | Single Line | Owner home city |
+| 21 | Owner 1 State | Single Line | Owner home state (2-letter code) |
+| 22 | Owner 1 Zip | Single Line | Owner home ZIP code |
 
 ### Pipeline Metadata
 
 | # | Field Name | Field Type | What It Stores |
 |---|-----------|-----------|----------------|
-| 19 | Batch Date | Single Line | Date the lead was processed (YYYYMMDD) |
+| 23 | Batch Date | Single Line | Date the lead was processed (YYYYMMDD) |
 
 ### Source Documents (File Upload)
 
 | # | Field Name | Field Type | What It Stores |
 |---|-----------|-----------|----------------|
-| 20 | Source Documents | **File Upload** | Original PDF documents (applications + bank statements) |
+| 24 | Source Documents | **File Upload** | Original PDF documents (applications + bank statements) |
 
 > **Important:** The "Source Documents" field MUST be created as **File Upload** type. All PDFs from each email (funding applications and bank statements) are uploaded here.
 

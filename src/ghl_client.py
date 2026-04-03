@@ -255,6 +255,35 @@ class GHLClient:
             logger.error(f"GHL update error: {e}", exc_info=True)
             return None
 
+    async def create_note(
+        self, contact_id: str, body: str
+    ) -> Optional[Dict[str, Any]]:
+        """Create a note on a GHL contact.
+
+        Args:
+            contact_id: The GHL contact ID.
+            body: The note text content.
+
+        Returns:
+            Note dict from GHL, or None on failure.
+        """
+        url = f"{self.base_url}/contacts/{contact_id}/notes"
+
+        try:
+            response = await self._request_with_retry(
+                "POST", url, label=f"GHL create note on {contact_id}",
+                headers=self.headers, json={"body": body},
+            )
+            result = response.json()
+            logger.info(f"Created note on GHL contact {contact_id}")
+            return result
+        except httpx.HTTPStatusError as e:
+            logger.error(f"GHL create note failed ({e.response.status_code}): {e.response.text}")
+            return None
+        except Exception as e:
+            logger.error(f"GHL create note error: {e}", exc_info=True)
+            return None
+
     async def get_contact(self, contact_id: str) -> Optional[Dict[str, Any]]:
         """Fetch a single contact by ID."""
         url = f"{self.base_url}/contacts/{contact_id}"

@@ -53,7 +53,7 @@ Use null for any field you cannot find or that is not visible in the document.
   "business_info": {
     "legal_name": "The legal business name of the APPLICANT/MERCHANT (NOT the lender/funder)",
     "dba": "DBA / trade name if different from legal name",
-    "ein": "Federal EIN, format XX-XXXXXXX. Include even if partially masked (e.g. ***-**-6789)",
+    "ein": "Federal EIN / Tax ID, format XX-XXXXXXX. Extract the FULL unmasked number when visible (common on applications). If only partially masked (e.g. XXX-XX-6789), include as shown. Prefer full numbers over masked ones.",
     "address": "Business street address",
     "city": "Business city",
     "state": "Business state (2-letter code)",
@@ -73,7 +73,7 @@ Use null for any field you cannot find or that is not visible in the document.
     "full_name": "Owner full name if first/last not clearly separated",
     "phone": "Owner personal phone (may differ from business phone)",
     "email": "Owner personal email",
-    "ssn_last_four": "Last 4 digits of SSN only (never extract full SSN)",
+    "ssn": "Owner full Social Security Number exactly as shown (e.g. 123-45-6789 or 123456789). Include partially masked values too (e.g. XXX-XX-6789). Extract from applications, NOT credit scrubs.",
     "dob": "Date of birth",
     "ownership_percentage": "Ownership percentage as a number (e.g. 100, 51, 50)",
     "title": "Title or role (Owner, CEO, President, Member, etc.)",
@@ -86,6 +86,8 @@ Use null for any field you cannot find or that is not visible in the document.
   "owner2_info": {
     "full_name": "Second owner/partner/guarantor full name, or null if only one owner",
     "phone": "Second owner phone",
+    "ssn": "Second owner full Social Security Number exactly as shown (e.g. 123-45-6789). Include partially masked values. Extract from applications, NOT credit scrubs.",
+    "dob": "Second owner date of birth",
     "ownership_percentage": "Second owner percentage",
     "fico": "Second owner FICO/credit score if shown"
   },
@@ -119,7 +121,8 @@ IMPORTANT RULES:
 - Extract EXACTLY what you see. Do not guess or fabricate data.
 - The BUSINESS NAME is the company seeking funding, NOT the lender/funder/ISO.
 - For phone numbers, include the raw number exactly as shown.
-- For EIN, include even partial/masked values (e.g. "***-**-6789" or just "6789").
+- For EIN, extract the FULL number from applications (e.g. "12-3456789"). Only use masked values if the full number is not visible.
+- For SSN, extract the full number exactly as shown on applications. Include masked versions if that's all that's visible.
 - For dollar amounts, extract as plain numbers without $ or commas (e.g. 50000 not $50,000).
 - For percentages, extract as plain numbers (e.g. 75 not 75%).
 - If the document is unreadable, set confidence below 0.3.
@@ -203,7 +206,6 @@ class ClaudeExtractor:
 
             except Exception as e:
                 last_error = e
-                # Check if this is a retryable error
                 status_code = getattr(getattr(e, "response", None), "status_code", None)
                 is_retryable = (
                     status_code in RETRYABLE_STATUS_CODES
@@ -222,20 +224,14 @@ class ClaudeExtractor:
                 )
                 await asyncio.sleep(delay)
 
-        raise last_error  # Should never reach here, but just in case
+        raise last_error
 
     def _parse_response(self, raw_text: str) -> Dict[str, Any]:
-        """Parse Claude's response text into structured JSON.
-
-        Handles common formatting issues like markdown code blocks,
-        trailing commas, etc.
-        """
+        """Parse Claude's response text into structured JSON."""
         text = raw_text.strip()
 
-        # Strip markdown code fences if present
         if text.startswith("```"):
             lines = text.split("\n")
-            # Remove first line (```json or ```) and last line (```)
             lines = [l for l in lines if not l.strip().startswith("```")]
             text = "\n".join(lines).strip()
 
@@ -244,14 +240,12 @@ class ClaudeExtractor:
         except json.JSONDecodeError:
             pass
 
-        # Try fixing trailing commas
         cleaned = re.sub(r",\s*([}\]])", r"\1", text)
         try:
             return json.loads(cleaned)
         except json.JSONDecodeError:
             pass
 
-        # Try extracting JSON object from surrounding text
         brace_start = text.find("{")
         brace_end = text.rfind("}")
         if brace_start != -1 and brace_end != -1:
@@ -278,14 +272,14 @@ class ClaudeExtractor:
             },
             "owner_info": {
                 "first_name": None, "last_name": None, "full_name": None,
-                "phone": None, "email": None, "ssn_last_four": None,
+                "phone": None, "email": None, "ssn": None,
                 "dob": None, "ownership_percentage": None, "title": None,
                 "home_address": None, "home_city": None,
                 "home_state": None, "home_zip": None,
             },
             "owner2_info": {
-                "full_name": None, "phone": None,
-                "ownership_percentage": None, "fico": None,
+                "full_name": None, "phone": None, "ssn": None,
+                "dob": None, "ownership_percentage": None, "fico": None,
             },
             "financial_info": {
                 "monthly_revenue": None, "annual_revenue": None,

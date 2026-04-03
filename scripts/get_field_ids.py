@@ -30,6 +30,10 @@ EXPECTED_FIELDS = {
     "True Revenue Avg 3mo": "true_revenue_avg_3mo",
     "FICO Owner 1": "fico_owner1",
     "FICO Owner 2": "fico_owner2",
+    "SSN Owner 1": "ssn_owner1",
+    "SSN Owner 2": "ssn_owner2",
+    "DOB Owner 1": "dob_owner1",
+    "DOB Owner 2": "dob_owner2",
     "Statement Number": "statement_number",
     "Owner 1 Address": "owner1_address",
     "Owner 1 City": "owner1_city",
@@ -89,7 +93,7 @@ def main():
     fields = data.get("customFields", [])
     if not fields:
         print("No custom fields found in this location.")
-        print("Make sure the client has created all 20 fields first.")
+        print("Make sure the client has created all 24 fields first.")
         return
 
     # Match GHL fields to our expected fields (case-insensitive)
@@ -122,7 +126,7 @@ def main():
         print()
 
     matched_count = len(matched) + (1 if source_docs_id else 0)
-    print(f"Matched {matched_count} of 20 fields.")
+    print(f"Matched {matched_count} of 24 fields.")
     print()
 
     # Print the dict for data_merger.py
@@ -137,6 +141,8 @@ def main():
         ("Owner 2", ["owner_2_name", "owner_2_phone"]),
         ("Financials", ["monthly_revenue", "avg_daily_balance", "true_revenue_avg_3mo"]),
         ("Credit", ["fico_owner1", "fico_owner2"]),
+        ("SSN", ["ssn_owner1", "ssn_owner2"]),
+        ("DOB", ["dob_owner1", "dob_owner2"]),
         ("Statement numbers", ["statement_number"]),
         ("Owner 1 home address", ["owner1_address", "owner1_city", "owner1_state", "owner1_zip"]),
         ("Metadata", ["batch_date"]),
