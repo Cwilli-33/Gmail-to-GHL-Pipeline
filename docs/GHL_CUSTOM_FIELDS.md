@@ -132,7 +132,7 @@ The pipeline automatically adds tags to contacts — no custom field setup neede
 
 ## How Standard GHL Fields Are Used
 
-In addition to the 20 custom fields above, the pipeline also writes to these built-in GHL contact fields:
+In addition to the 24 custom fields above, the pipeline also writes to these built-in GHL contact fields:
 
 | GHL Field | Source |
 |-----------|--------|

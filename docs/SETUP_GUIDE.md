@@ -37,7 +37,7 @@ Complete setup walkthrough for the Email Lead Pipeline.
 
 ### Create Custom Fields
 
-Create all 20 fields from the [GHL Custom Fields Guide](GHL_CUSTOM_FIELDS.md), then run:
+Create all 24 fields from the [GHL Custom Fields Guide](GHL_CUSTOM_FIELDS.md), then run:
 ```bash
 python scripts/get_field_ids.py
 ```
