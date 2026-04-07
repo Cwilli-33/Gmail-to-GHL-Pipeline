@@ -284,13 +284,19 @@ class DataMerger:
             credit.get("fico_owner2") or owner2.get("fico")
         )
 
-        # --- SSN ---
-        self._set_custom(custom, "ssn_owner1", owner.get("ssn"))
-        self._set_custom(custom, "ssn_owner2", owner2.get("ssn"))
+        # --- SSN (prefer full unmasked, never overwrite full with masked) ---
+        ssn1 = owner.get("ssn")
+        ssn2 = owner2.get("ssn")
+        logger.info(f"SSN mapping: owner1_ssn={'present' if ssn1 else 'missing'} (masked={self._is_masked(ssn1)}), owner2_ssn={'present' if ssn2 else 'missing'} (masked={self._is_masked(ssn2)})")
+        self._set_custom_prefer_unmasked(custom, existing_custom, "ssn_owner1", ssn1)
+        self._set_custom_prefer_unmasked(custom, existing_custom, "ssn_owner2", ssn2)
 
         # --- DOB ---
-        self._set_custom(custom, "dob_owner1", owner.get("dob"))
-        self._set_custom(custom, "dob_owner2", owner2.get("dob"))
+        dob1 = owner.get("dob")
+        dob2 = owner2.get("dob")
+        logger.info(f"DOB mapping: owner1_dob={'present' if dob1 else 'missing'}, owner2_dob={'present' if dob2 else 'missing'}")
+        self._set_custom(custom, "dob_owner1", dob1)
+        self._set_custom(custom, "dob_owner2", dob2)
 
         # Statement numbers — accumulate across documents, don't overwrite
         new_stmts = extracted.get("statement_numbers")
@@ -310,6 +316,17 @@ class DataMerger:
 
         # --- Metadata ---
         custom[GHL_CUSTOM_FIELDS["batch_date"]] = datetime.utcnow().strftime("%Y%m%d")
+
+        # Log which custom fields are being sent (IDs only for debugging)
+        ssn1_id = GHL_CUSTOM_FIELDS.get("ssn_owner1")
+        ssn2_id = GHL_CUSTOM_FIELDS.get("ssn_owner2")
+        dob1_id = GHL_CUSTOM_FIELDS.get("dob_owner1")
+        dob2_id = GHL_CUSTOM_FIELDS.get("dob_owner2")
+        logger.info(
+            f"Custom fields built: total={len(custom)}, "
+            f"ssn1_set={ssn1_id in custom}, ssn2_set={ssn2_id in custom}, "
+            f"dob1_set={dob1_id in custom}, dob2_set={dob2_id in custom}"
+        )
 
         return custom
 
@@ -366,6 +383,36 @@ class DataMerger:
     # -------------------------------------------------------------------------
     # Custom field helpers
     # -------------------------------------------------------------------------
+
+    @staticmethod
+    def _is_masked(value: Any) -> bool:
+        """Check if a value contains masking characters (X, x, *)."""
+        if not value:
+            return False
+        return bool(re.search(r"[xX*]{2,}", str(value)))
+
+    def _set_custom_prefer_unmasked(
+        self, custom: Dict, existing_custom: Dict, field_name: str, value: Any
+    ) -> None:
+        """Set a custom field, but never overwrite a full unmasked value with a masked one.
+
+        Same logic used for EIN — if a full SSN already exists in GHL, a masked
+        version from a later credit scrub will not replace it.
+        """
+        if not value:
+            return
+        ghl_id = GHL_CUSTOM_FIELDS.get(field_name)
+        if not ghl_id or ghl_id.startswith("NEEDS_"):
+            return
+        new_is_masked = self._is_masked(value)
+        existing_val = existing_custom.get(ghl_id, "")
+        existing_is_masked = self._is_masked(existing_val) if existing_val else True
+        # Only set if: new is unmasked, OR existing is empty/masked
+        if not new_is_masked or not existing_val or existing_is_masked:
+            custom[ghl_id] = str(value)
+            logger.info(f"SSN/sensitive field '{field_name}': setting value (new_masked={new_is_masked}, existing_masked={existing_is_masked})")
+        else:
+            logger.info(f"SSN/sensitive field '{field_name}': SKIPPED masked value — full value already exists in GHL")
 
     def _set_custom(self, custom: Dict, field_name: str, value: Any) -> None:
         """Set a custom field by name (maps to GHL ID) if value is non-empty."""

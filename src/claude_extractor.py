@@ -73,8 +73,8 @@ Use null for any field you cannot find or that is not visible in the document.
     "full_name": "Owner full name if first/last not clearly separated",
     "phone": "Owner personal phone (may differ from business phone)",
     "email": "Owner personal email",
-    "ssn": "Owner full Social Security Number exactly as shown (e.g. 123-45-6789 or 123456789). Include partially masked values too (e.g. XXX-XX-6789). Extract from applications, NOT credit scrubs.",
-    "dob": "Date of birth",
+    "ssn": "Owner full Social Security Number. PREFER the full unmasked 9-digit number (e.g. 123-45-6789 or 123456789) — these appear on MCA applications near the owner/guarantor signature area. If only a partially masked version is visible (e.g. XXX-XX-6789), include it but mark as masked. Return null if NO SSN digits are visible at all.",
+    "dob": "Owner date of birth in any format shown (e.g. 01/15/1980, 1980-01-15, Jan 15 1980). ALWAYS extract if visible anywhere on the document.",
     "ownership_percentage": "Ownership percentage as a number (e.g. 100, 51, 50)",
     "title": "Title or role (Owner, CEO, President, Member, etc.)",
     "home_address": "Owner home street address",
@@ -86,8 +86,8 @@ Use null for any field you cannot find or that is not visible in the document.
   "owner2_info": {
     "full_name": "Second owner/partner/guarantor full name, or null if only one owner",
     "phone": "Second owner phone",
-    "ssn": "Second owner full Social Security Number exactly as shown (e.g. 123-45-6789). Include partially masked values. Extract from applications, NOT credit scrubs.",
-    "dob": "Second owner date of birth",
+    "ssn": "Second owner full Social Security Number. PREFER full unmasked 9-digit number. If only partially masked version visible, include it. Return null if no SSN digits visible.",
+    "dob": "Second owner date of birth in any format shown. ALWAYS extract if visible.",
     "ownership_percentage": "Second owner percentage",
     "fico": "Second owner FICO/credit score if shown"
   },
@@ -122,7 +122,8 @@ IMPORTANT RULES:
 - The BUSINESS NAME is the company seeking funding, NOT the lender/funder/ISO.
 - For phone numbers, include the raw number exactly as shown.
 - For EIN, extract the FULL number from applications (e.g. "12-3456789"). Only use masked values if the full number is not visible.
-- For SSN, extract the full number exactly as shown on applications. Include masked versions if that's all that's visible.
+- For SSN, ALWAYS prefer the FULL unmasked number (e.g. 123-45-6789). Only include a masked version (e.g. XXX-XX-6789) if the full number is not visible anywhere. Check near owner signature blocks, personal info sections, and guarantor sections.
+- For DOB (date of birth), ALWAYS extract if visible anywhere on the document. Check near owner name, SSN fields, and personal information sections.
 - For dollar amounts, extract as plain numbers without $ or commas (e.g. 50000 not $50,000).
 - For percentages, extract as plain numbers (e.g. 75 not 75%).
 - If the document is unreadable, set confidence below 0.3.

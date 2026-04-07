@@ -137,9 +137,21 @@ async def process_email(email_msg: EmailMessage) -> bool:
 
             confidence = extracted.get("confidence", 0.0)
             doc_type = extracted.get("document_type", "OTHER")
+            owner_data = extracted.get("owner_info", {}) or {}
+            owner2_data = extracted.get("owner2_info", {}) or {}
             log_step("EXTRACTED", (
                 f"{filename}: confidence={confidence}, type={doc_type}, "
                 f"biz_name={extracted.get('business_info', {}).get('legal_name')}"
+            ))
+            # Log sensitive field presence (not values) for debugging
+            log_step("EXTRACTED_FIELDS", (
+                f"ein={'YES' if extracted.get('business_info', {}).get('ein') else 'NO'}, "
+                f"ssn_owner1={'YES' if owner_data.get('ssn') else 'NO'}, "
+                f"ssn_owner2={'YES' if owner2_data.get('ssn') else 'NO'}, "
+                f"dob_owner1={'YES' if owner_data.get('dob') else 'NO'}, "
+                f"dob_owner2={'YES' if owner2_data.get('dob') else 'NO'}, "
+                f"fico1={'YES' if extracted.get('credit_info', {}).get('fico_owner1') else 'NO'}, "
+                f"fico2={'YES' if extracted.get('credit_info', {}).get('fico_owner2') else 'NO'}"
             ))
 
             extraction_results.append((pdf_bytes, filename, extracted))
